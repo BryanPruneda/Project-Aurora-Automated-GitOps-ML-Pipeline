@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aurora-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: aurora
+  template:
+    metadata:
+      labels:
+        app: aurora
+    spec:
+      containers:
+      - name: aurora-container
+        image: my-ml-model:v1.0.0
+        ports:
+        - containerPort: 80
