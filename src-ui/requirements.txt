@@ -2,3 +2,6 @@ streamlit
 requests
 redis
 pandas
+psycopg2-binary
+pandas
+numpy
