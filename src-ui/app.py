@@ -1,20 +1,26 @@
 import streamlit as st
-import requests
+import redis
 import os
 
-# Get the API URL from an environment variable (standard K8s practice)
-API_URL = os.getenv("MODEL_API_URL", "http://aurora-service:80")
+# Connect to Redis
+r = redis.Redis(host='aurora-redis-service', port=6379, db=0, decode_responses=True)
 
-st.title("🚀 Project Aurora: ML Inference Portal")
-st.write("Interact with your deployed Kubernetes ML model in real-time.")
+st.set_page_config(page_title="Terra Texas", page_icon="🌵")
+st.title("🌵 Project Terra: Texas Soil Monitor")
 
-value = st.slider("Select Input Value", 0.0, 100.0, 50.0)
+# Get live data from Database
+soil_temp = r.get('texas_soil_temp')
 
-if st.button("Get Prediction"):
-    try:
-        response = requests.get(f"{API_URL}/predict", params={"value": value})
-        data = response.json()
-        st.success(f"Prediction Received: {data['prediction']}")
-        st.json(data)
-    except Exception as e:
-        st.error(f"Error connecting to Model API: {e}")
+if soil_temp:
+    temp_val = float(soil_temp)
+    st.metric(label="Current Fort Worth Soil Temp", value=f"{temp_val}°C")
+    
+    if temp_val > 15:
+        st.success("☀️ Warm enough for spring planting!")
+    else:
+        st.warning("❄️ Soil is still a bit chilly.")
+else:
+    st.info("Waiting for data from the Texas Worker...")
+
+st.divider()
+st.write("Live Data sourced from Open-Meteo Satellite Feeds")
