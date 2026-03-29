@@ -7,24 +7,29 @@ import pydeck as pdk
 import psycopg2
 import pytz
 from datetime import datetime
+from streamlit_autorefresh import st_autorefresh
 
 # 1. Setup & Connections
-st.set_page_config(page_title="Aurora: Lone Star Edition", layout="wide")
+st.set_page_config(page_title="Project Aurora: Texas Soil Temperatures", layout="wide")
 r = redis.Redis(host='aurora-redis-service', port=6379, db=0, decode_responses=True)
 texas_tz = pytz.timezone('US/Central')
 
-def get_history():
+# --- NEW: AUTO-REFRESH EVERY 60 SECONDS ---
+st_autorefresh(interval=60 * 1000, key="datarefresh")
+
+def get_multi_history(selected_cities):
     try:
         conn = psycopg2.connect(host="aurora-postgres-service", database="postgres", user="postgres", password="fortworth")
-        # Get last 100 readings for the chart
-        df = pd.read_sql("SELECT ts, temp, CONCAT(lat, ',', lon) as point_id FROM soil_history ORDER BY ts DESC LIMIT 100", conn)
+        # Querying by the 'id' (City Name) stored in Postgres
+        query = "SELECT ts, temp, lat, lon FROM soil_history ORDER BY ts DESC LIMIT 500"
+        df = pd.read_sql(query, conn)
         conn.close()
         return df
     except:
         return pd.DataFrame()
 
-# 2. Main UI
-st.title("🤖 Project Aurora: The AI Oracle")
+# 2. UI Layout
+st.title("🌡️ Project Aurora: Texas Soil Temperatures")
 
 raw_grid = r.get('texas_grid_data')
 if raw_grid:
@@ -36,8 +41,9 @@ if raw_grid:
     col1, col2 = st.columns([2, 1])
 
     with col1:
-        st.subheader("Texas Intelligence Map")
+        st.subheader("Interactive Intelligence Map")
         filtered_df = grid_df[grid_df['id'].isin(selected_names)]
+        
         layer = pdk.Layer(
             "ScatterplotLayer", 
             filtered_df, 
@@ -47,45 +53,53 @@ if raw_grid:
             get_fill_color="[255, 215, 0, 200]", 
             radius_min_pixels=8
         )
+        
         st.pydeck_chart(pdk.Deck(
             layers=[layer], 
             initial_view_state=pdk.ViewState(latitude=31.0, longitude=-100.0, zoom=5),
             tooltip={"text": "{id}: {temp}°C"}
         ))
         
-        # --- THE POSTGRES PORTION ---
+        # --- ENHANCED MULTI-COLOR POSTGRES CHART ---
         st.divider()
-        st.subheader("📈 Historical Trends (Postgres)")
-        hist_df = get_history()
-        if not hist_df.empty:
-            hist_df['ts'] = pd.to_datetime(hist_df['ts']).dt.tz_localize('UTC').dt.tz_convert(texas_tz)
-            # Filter history to show only selected cities if data exists
-            st.line_chart(hist_df.set_index('ts')['temp'])
+        st.subheader("📈 Historical Trends (Multi-City)")
+        hist_raw = get_multi_history(selected_names)
+        
+        if not hist_raw.empty:
+            # Match coordinates to City Names from the grid_df
+            # We pivot the table so columns = City Names (this triggers multi-colors)
+            hist_raw['ts'] = pd.to_datetime(hist_raw['ts']).dt.tz_localize('UTC').dt.tz_convert(texas_tz)
+            
+            # Helper to map lat/lon back to city name
+            name_map = {f"{row['lat']},{row['lon']}": row['id'] for _, row in grid_df.iterrows()}
+            hist_raw['city'] = hist_raw.apply(lambda x: name_map.get(f"{x['lat']},{x['lon']}", "Unknown"), axis=1)
+            
+            # Filter for only selected cities and pivot
+            chart_df = hist_raw[hist_raw['city'].isin(selected_names)]
+            if not chart_df.empty:
+                chart_pivot = chart_df.pivot_table(index='ts', columns='city', values='temp')
+                st.line_chart(chart_pivot) # Streamlit automatically assigns unique colors per column!
+            else:
+                st.info("Gathering historical data for selected hubs...")
         else:
-            st.info("Waiting for Postgres to collect more history...")
+            st.info("Connecting to Postgres history...")
 
     with col2:
+        # --- CST DAILY BRIEFING ---
         st.subheader("📰 AI Daily Briefing")
         if selected_names:
             now_texas = datetime.now(texas_tz)
             time_str = now_texas.strftime('%I:%M %p %Z')
-
             avg_temp = filtered_df['temp'].mean()
-            coldest = filtered_df.loc[filtered_df['temp'].idxmin()]
             
-            st.info(f"**Texas Report:** It is currently **{time_str}**. "
-                    f"Average soil temp: {avg_temp:.1f}°C. "
-                    f"Coldest Hub: **{coldest['id']}** ({coldest['temp']}°C).")
+            st.info(f"**Texas Report:** {time_str}\n\nAvg Temp: {avg_temp:.1f}°C")
             
             st.divider()
-            st.subheader("🔮 Oracle Forecast")
+            st.subheader("🔮 Oracle Forecast (1hr)")
             for city in selected_names:
                 city_temp = filtered_df[filtered_df['id'] == city]['temp'].values[0]
-                # The 'Brain' logic
                 pred = round(city_temp + (np.random.uniform(-0.5, 0.5)), 2)
-                st.write(f"**{city}**: Now {city_temp}°C → **1hr: {pred}°C**")
-        else:
-            st.write("Select a city to begin analysis.")
+                st.write(f"**{city}**: {city_temp}°C → **{pred}°C**")
 
 else:
-    st.warning("Booting Texas-wide satellite relay...")
+    st.warning("Fetching Texas-wide satellite relay...")
