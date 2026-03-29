@@ -13,5 +13,5 @@ def read_root():
 
 @app.get("/predict")
 def predict(value: float):
-    prediction = value * 0.85 
+    prediction = value * 2.0 
     return {"input": value, "prediction": prediction}
