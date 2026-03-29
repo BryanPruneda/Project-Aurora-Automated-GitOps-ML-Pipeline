@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: terra-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: terra-worker
+  template:
+    metadata:
+      labels:
+        app: terra-worker
+    spec:
+      containers:
+      - name: terra-container
+        image: terra-worker:v1.0.0
