@@ -1,26 +1,27 @@
 import streamlit as st
 import redis
-import os
+import pandas as pd
 
-# Connect to Redis
 r = redis.Redis(host='aurora-redis-service', port=6379, db=0, decode_responses=True)
 
-st.set_page_config(page_title="Terra Texas", page_icon="🌵")
-st.title("🌵 Project Terra: Texas Soil Monitor")
+st.set_page_config(page_title="Terra Texas Pro", layout="wide")
+st.title("🌵 Texas Soil Intelligence Dashboard")
 
-# Get live data from Database
-soil_temp = r.get('texas_soil_temp')
+col1, col2 = st.columns([1, 1])
 
-if soil_temp:
-    temp_val = float(soil_temp)
-    st.metric(label="Current Fort Worth Soil Temp", value=f"{temp_val}°C")
-    
-    if temp_val > 15:
-        st.success("☀️ Warm enough for spring planting!")
+with col1:
+    soil_temp = r.get('texas_soil_temp')
+    if soil_temp:
+        st.metric("Fort Worth Soil Temp", f"{soil_temp}°C")
+        # Visual Map
+        df = pd.DataFrame({'lat': [32.7555], 'lon': [-97.3308]})
+        st.map(df)
+
+with col2:
+    st.subheader("Regional Stats")
+    if soil_temp and float(soil_temp) < 5:
+        st.error("🚨 FREEZE WARNING: Protect your crops!")
     else:
-        st.warning("❄️ Soil is still a bit chilly.")
-else:
-    st.info("Waiting for data from the Texas Worker...")
-
-st.divider()
-st.write("Live Data sourced from Open-Meteo Satellite Feeds")
+        st.success("🍀 Conditions are stable.")
+    
+    st.info("Historical tracking active in PostgreSQL.")
